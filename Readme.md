@@ -82,9 +82,16 @@ The installer supports Ubuntu **22.04, 24.04, and 26.04 LTS** on `aarch64`/`arm6
 
 Ubuntu 26.04 support uses the Ubuntu 24.04 x86_64 FEX guest RootFS. That is intentional: FEX’s prebuilt 24.04 guest is compatible with a 26.04 host, while the host itself remains Ubuntu 26.04. The installer no longer adds the `armhf` architecture on the default FEX path.
 
-After downloading the RootFS, the installer resolves it to an absolute path and exports `FEX_ROOTFS` for SteamCMD, the Valheim server, and server updates. This avoids the FEX error `Current RootFS path set to ''` when FEX has downloaded a RootFS but has not populated its config file.
+After downloading the RootFS, the installer resolves it to an absolute path and exports `FEX_ROOTFS` for SteamCMD, the Valheim server, and server updates. The setup log is piped through `tee`, so the RootFS fetcher is explicitly attached to the SSH terminal to keep it in CLI mode instead of trying to open Zenity on the headless server. This avoids the FEX error `Current RootFS path set to ''` when FEX has downloaded a RootFS but has not populated its config file.
 
 If an older installation already shows that error, update the setup script and run it once more. It will reuse the existing RootFS, configure the path, and regenerate the launcher/helper environment.
+
+If the RootFS has not been downloaded yet, run the fetcher directly from the SSH terminal once:
+
+```bash
+FEXRootFSFetcher -y -x -a --distro-name=ubuntu --distro-version=24.04 \
+  </dev/tty >/dev/tty 2>/dev/tty
+```
 
 For OCI Ampere instances, choose a **Canonical Ubuntu aarch64** image. OCI’s current documented platform-image list still provides Ubuntu 24.04 and 22.04 for Arm; if Ubuntu 26.04 is not offered in your tenancy, use a custom/imported 26.04 image or use the documented 24.04 image. Do not select the Minimal Ubuntu image for Arm-based shapes; OCI documents the standard Ubuntu image for Arm. See the [OCI platform image list](https://docs.oracle.com/en-us/iaas/Content/Compute/References/images.htm).
 
@@ -230,11 +237,11 @@ The IP Address we copied in the previous step will be referenced here as `IP_ADD
 1. Run the following command:
 
    ```bash
-   wget https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh
+   wget https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh
    ```
 
    This will download the installation script onto your server allowing it to set up everything which is needed.
-   If you are using a fork, replace `husjon` with your GitHub username. When the script is run from a cloned checkout, its self-update logic detects the fork automatically.
+   If you are using a different fork, replace `snottis` with its GitHub owner. When the script is run from a cloned checkout, its self-update logic detects the fork automatically.
 
 2. Then run the following command:
 
@@ -319,19 +326,26 @@ https://www.youtube.com/watch?v=h2t9cSFidt0
 
 The `setup_valheim_server.sh` now has a self-update feature which allows it to update itself and apply bug fixes whenever the script is run. When launched from a Git checkout, it detects the GitHub `origin` remote and current branch, so a fork checks its own setup script instead of the upstream repository.
 
-If you downloaded the script as a standalone file, set `SETUP_SCRIPT_URL` to the raw URL in your fork:
+If you downloaded the script as a standalone file, set `SETUP_SCRIPT_URL` to the raw URL in your fork. The updated script remembers this URL in `~/.config/valheim_server/setup_script_url` for future runs:
 
 ```bash
-SETUP_SCRIPT_URL=https://raw.githubusercontent.com/YOUR_USER/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh bash ~/setup_valheim_server.sh
+SETUP_SCRIPT_URL=https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh bash ~/setup_valheim_server.sh
 ```
 
 An explicit `SETUP_SCRIPT_URL` always takes precedence over automatic detection.
+
+An older standalone copy cannot discover a fork because it has no Git metadata. Bootstrap it once by downloading the current script directly from the fork:
+
+```bash
+curl --fail --location https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh -o ~/setup_valheim_server.sh
+SETUP_SCRIPT_URL=https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh bash ~/setup_valheim_server.sh
+```
 
 After updating, it will show what have changed, update itself, then ask the user to restart the setup script.  
 It is not retroactively applied, hence the script will need to be downloaded again f.ex with:
 
 ```bash
-wget https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh -O ~/setup_valheim_server.sh
+   wget https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh -O ~/setup_valheim_server.sh
 ```
 
 This will overwrite the existing script.
@@ -360,7 +374,7 @@ The repository includes `install_valheim_world.sh` for importing one world archi
 Download it once on the server:
 
 ```bash
-wget https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/install_valheim_world.sh -O ~/install_valheim_world.sh
+wget https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/install_valheim_world.sh -O ~/install_valheim_world.sh
 chmod +x ~/install_valheim_world.sh
 ```
 

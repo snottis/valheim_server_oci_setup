@@ -55,6 +55,7 @@ function is_x86_64() {
 
 function setup_script_url_from_git_remote() {
     local setup_script_path="$1"
+    local script_directory
     local repository_dir
     local remote_url
     local branch_name
@@ -62,9 +63,23 @@ function setup_script_url_from_git_remote() {
     local owner
     local repository
 
-    repository_dir="$(dirname "${setup_script_path}")"
-    remote_url="$(git -C "${repository_dir}" config --get remote.origin.url 2>/dev/null || true)"
-    branch_name="$(git -C "${repository_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    local -a repository_directories=()
+
+    script_directory="$(dirname "${setup_script_path}")"
+    repository_directories+=("${script_directory}")
+    if [[ "${PWD}" != "${script_directory}" ]]; then
+        repository_directories+=("${PWD}")
+    fi
+
+    for repository_dir in "${repository_directories[@]}"; do
+        remote_url="$(git -C "${repository_dir}" config --get remote.origin.url 2>/dev/null || true)"
+        branch_name="$(git -C "${repository_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+        if [[ -n "${remote_url}" && -n "${branch_name}" ]]; then
+            break
+        fi
+        remote_url=""
+        branch_name=""
+    done
 
     if [[ -z "${remote_url}" || -z "${branch_name}" ]]; then
         return 1
@@ -101,18 +116,38 @@ function setup_script_url_from_git_remote() {
 }
 
 function perform_self_update {
+    local explicit_url=false
+    local setup_script_url_file="${HOME}/.config/valheim_server/setup_script_url"
+
     if [[ -n $NO_SELF_UPDATE ]]; then
         notify "Skipping self-update"
         return
     fi
 
-    ETAG_CACHE="${HOME}/.cache/setup_valheim_server.etag"
     SETUP_SCRIPT_PATH="$(realpath "$0")"
-    if [[ -z "${SETUP_SCRIPT_URL:-}" ]]; then
-        SETUP_SCRIPT_URL="$(setup_script_url_from_git_remote "${SETUP_SCRIPT_PATH}" || printf '%s' \
-            "https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh")"
+    if [[ -n "${SETUP_SCRIPT_URL:-}" ]]; then
+        explicit_url=true
+    elif SETUP_SCRIPT_URL="$(setup_script_url_from_git_remote "${SETUP_SCRIPT_PATH}")"; then
+        :
+    elif [[ -s "${setup_script_url_file}" ]]; then
+        IFS= read -r SETUP_SCRIPT_URL < "${setup_script_url_file}" || true
+    else
+        SETUP_SCRIPT_URL="https://raw.githubusercontent.com/snottis/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh"
     fi
 
+    if [[ -z "${SETUP_SCRIPT_URL:-}" ]]; then
+        error "The setup script update URL is empty. Set SETUP_SCRIPT_URL and retry."
+        return 1
+    fi
+
+    # A standalone script has no Git metadata. Remember an explicit fork URL
+    # so a one-time bootstrap does not have to be repeated on every run.
+    if [[ "${explicit_url}" == true ]]; then
+        mkdir -p "$(dirname "${setup_script_url_file}")"
+        printf '%s\n' "${SETUP_SCRIPT_URL}" > "${setup_script_url_file}"
+    fi
+
+    ETAG_CACHE="${HOME}/.cache/setup_valheim_server.etag"
     mkdir -p "$(dirname "${ETAG_CACHE}")"
     TEMP_SCRIPT_PATH="$(mktemp)"
     trap 'rm -f -- "${TEMP_SCRIPT_PATH}"' EXIT
@@ -294,12 +329,31 @@ function install_fex_emu() {
 
     if ! fex_rootfs_is_installed; then
         notify "Creating FEX ${FEX_ROOTFS_NAME} RootFS, this might take a while"
-        FEXRootFSFetcher \
+        if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+            error "FEXRootFSFetcher needs an interactive terminal on this headless server."
+            error "Run the setup script from an interactive SSH session and retry."
+            return 1
+        fi
+
+        # main is piped through tee for logging, which makes stdout look
+        # non-interactive to FEXRootFSFetcher and causes it to launch Zenity.
+        # Attach the fetcher's terminal streams to the SSH terminal so the
+        # CLI mode is used.
+        if ! FEXRootFSFetcher \
             -y \
             -x \
             -a \
             --distro-name=ubuntu \
-            --distro-version="${FEX_ROOTFS_VERSION}"
+            --distro-version="${FEX_ROOTFS_VERSION}" \
+            </dev/tty >/dev/tty 2>/dev/tty; then
+            error "FEXRootFSFetcher failed to download the RootFS."
+            return 1
+        fi
+
+        if ! fex_rootfs_is_installed; then
+            error "FEXRootFSFetcher finished without creating ${FEX_ROOTFS_NAME}."
+            return 1
+        fi
         success "Creating RootFS - Done"
     fi
 
@@ -772,7 +826,7 @@ function main {
 
     if [[ $ID != ubuntu ]] || [[ $VERSION_ID != 22.04 && $VERSION_ID != 24.04 && $VERSION_ID != 26.04 ]]; then
         error "The release \"$PRETTY_NAME\" is not supported. Use Ubuntu 22.04, 24.04, or 26.04 LTS."
-        echo "See https://github.com/husjon/valheim_server_oci_setup?tab=readme-ov-file#ubuntu-version for more information"
+        echo "See https://github.com/snottis/valheim_server_oci_setup?tab=readme-ov-file#ubuntu-version for more information"
         echo
         exit 1
     fi
@@ -780,7 +834,7 @@ function main {
     if [[ $USE_BOX = true ]]; then
         if [[ $VERSION_ID != 22.04 ]]; then
             error "Box86/Box64 is only supported here on Ubuntu 22.04; use the default FEX emulator on $PRETTY_NAME."
-            echo "See https://github.com/husjon/valheim_server_oci_setup?tab=readme-ov-file#ubuntu-version for more information"
+            echo "See https://github.com/snottis/valheim_server_oci_setup?tab=readme-ov-file#ubuntu-version for more information"
             echo
             exit 1
         fi
