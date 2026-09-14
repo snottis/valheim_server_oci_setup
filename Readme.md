@@ -230,6 +230,7 @@ The IP Address we copied in the previous step will be referenced here as `IP_ADD
    ```
 
    This will download the installation script onto your server allowing it to set up everything which is needed.
+   If you are using a fork, replace `husjon` with your GitHub username. When the script is run from a cloned checkout, its self-update logic detects the fork automatically.
 
 2. Then run the following command:
 
@@ -312,7 +313,15 @@ https://www.youtube.com/watch?v=h2t9cSFidt0
 
 # Installer Self-update
 
-The `setup_valheim_server.sh` now has a self-update feature which allow it to update itself and apply any bugfixes that should be necessary whenever the script is run.
+The `setup_valheim_server.sh` now has a self-update feature which allows it to update itself and apply bug fixes whenever the script is run. When launched from a Git checkout, it detects the GitHub `origin` remote and current branch, so a fork checks its own setup script instead of the upstream repository.
+
+If you downloaded the script as a standalone file, set `SETUP_SCRIPT_URL` to the raw URL in your fork:
+
+```bash
+SETUP_SCRIPT_URL=https://raw.githubusercontent.com/YOUR_USER/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh bash ~/setup_valheim_server.sh
+```
+
+An explicit `SETUP_SCRIPT_URL` always takes precedence over automatic detection.
 
 After updating, it will show what have changed, update itself, then ask the user to restart the setup script.  
 It is not retroactively applied, hence the script will need to be downloaded again f.ex with:

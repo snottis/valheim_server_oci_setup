@@ -53,22 +53,71 @@ function is_x86_64() {
     [[ ${HOST_ARCH} == amd64 || ${HOST_ARCH} == x86_64 ]]
 }
 
+function setup_script_url_from_git_remote() {
+    local setup_script_path="$1"
+    local repository_dir
+    local remote_url
+    local branch_name
+    local repository_path
+    local owner
+    local repository
+
+    repository_dir="$(dirname "${setup_script_path}")"
+    remote_url="$(git -C "${repository_dir}" config --get remote.origin.url 2>/dev/null || true)"
+    branch_name="$(git -C "${repository_dir}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+    if [[ -z "${remote_url}" || -z "${branch_name}" ]]; then
+        return 1
+    fi
+
+    case "${remote_url}" in
+        git@github.com:*)
+            repository_path="${remote_url#git@github.com:}"
+            ;;
+        https://github.com/*|http://github.com/*)
+            repository_path="${remote_url#*github.com/}"
+            ;;
+        ssh://git@github.com/*)
+            repository_path="${remote_url#ssh://git@github.com/}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    repository_path="${repository_path%.git}"
+    if [[ "${repository_path}" != */* || "${repository_path}" == */*/* ]]; then
+        return 1
+    fi
+
+    owner="${repository_path%%/*}"
+    repository="${repository_path#*/}"
+    if [[ -z "${owner}" || -z "${repository}" ]]; then
+        return 1
+    fi
+
+    printf 'https://raw.githubusercontent.com/%s/%s/refs/heads/%s/setup_valheim_server.sh\n' \
+        "${owner}" "${repository}" "${branch_name}"
+}
+
 function perform_self_update {
     if [[ -n $NO_SELF_UPDATE ]]; then
         notify "Skipping self-update"
         return
     fi
 
-    SETUP_SCRIPT_URL=${SETUP_SCRIPT_URL:-"https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh"}
-
     ETAG_CACHE="${HOME}/.cache/setup_valheim_server.etag"
     SETUP_SCRIPT_PATH="$(realpath "$0")"
+    if [[ -z "${SETUP_SCRIPT_URL:-}" ]]; then
+        SETUP_SCRIPT_URL="$(setup_script_url_from_git_remote "${SETUP_SCRIPT_PATH}" || printf '%s' \
+            "https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/setup_valheim_server.sh")"
+    fi
 
     mkdir -p "$(dirname "${ETAG_CACHE}")"
     TEMP_SCRIPT_PATH="$(mktemp)"
     trap 'rm -f -- "${TEMP_SCRIPT_PATH}"' EXIT
 
-    info "Checking for setup script updates"
+    info "Checking for setup script updates from ${SETUP_SCRIPT_URL}"
 
     curl --fail --silent --show-error --etag-save "${ETAG_CACHE}" --etag-compare "${ETAG_CACHE}" -L "${SETUP_SCRIPT_URL}" -o "${TEMP_SCRIPT_PATH}"
 
