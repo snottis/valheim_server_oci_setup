@@ -26,6 +26,7 @@
 - [Modding](#modding)
 - [Installer Self-update](#installer-self-update)
 - [Adding Pre-existing worlds](#adding-pre-existing-worlds)
+- [Installing a world from a .zip file](#installing-a-world-from-a-zip-file)
 - [Troubleshooting](#troubleshooting)
   - [Discord](#discord)
   - [Matrix](#matrix)
@@ -77,10 +78,13 @@ For further discussions, please do join my [Matrix space](#matrix).
 
 ## Ubuntu version
 
-Currently the only supported version of Ubuntu is Ubuntu 22.04 LTS, please make sure the image **Canonical Ubuntu 22.04 Minimal aarch64** is selected during the setup procedure.
+The installer supports Ubuntu **22.04, 24.04, and 26.04 LTS** on `aarch64`/`arm64` and `amd64`. On ARM, the default emulator is FEX; the legacy Box86/Box64 fallback is available only with `USE_BOX=true` on Ubuntu 22.04 because newer Ubuntu releases changed the 32-bit ARM time ABI.
 
-This is because changes was done in preparation to how timestamps will be handled prior to 2038.  
-This was added last minute prior to the Ubuntu 24.04LTS release cycle feature feeeze, which unfortunately impacted `armhf` which we rely on here, more information can be found at the ubuntu mailing list: https://lists.ubuntu.com/archives/ubuntu-devel-announce/2024-March/001344.html
+Ubuntu 26.04 support uses the Ubuntu 24.04 x86_64 FEX guest RootFS. That is intentional: FEX’s prebuilt 24.04 guest is compatible with a 26.04 host, while the host itself remains Ubuntu 26.04. The installer no longer adds the `armhf` architecture on the default FEX path.
+
+For OCI Ampere instances, choose a **Canonical Ubuntu aarch64** image. OCI’s current documented platform-image list still provides Ubuntu 24.04 and 22.04 for Arm; if Ubuntu 26.04 is not offered in your tenancy, use a custom/imported 26.04 image or use the documented 24.04 image. Do not select the Minimal Ubuntu image for Arm-based shapes; OCI documents the standard Ubuntu image for Arm. See the [OCI platform image list](https://docs.oracle.com/en-us/iaas/Content/Compute/References/images.htm).
+
+Ubuntu 26.04 is the current Resolute Raccoon LTS release; see the [Ubuntu 26.04 release notes](https://documentation.ubuntu.com/release-notes/26.04/).
 
 # Credit
 
@@ -143,8 +147,8 @@ Verify that we have a set of SSH key pairs
       2. Leave compartment default unless you already have another compartment set up that you'd like to use.
       3. Leave placement default.  
          **Note:** you might need to change it if it complains about placement allocation during deployment.
-      4. Under **Image** click **Change image** and choose a **Canonical Ubuntu 22.04 Minimal aarch64** and confirm with the **Select image** button.  
-         **Note:** make sure you select **aarch64** which is aimed at ARM server
+      4. Under **Image** click **Change image** and choose a **Canonical Ubuntu aarch64** image. Choose **Ubuntu 26.04** if it is available; otherwise choose the current OCI-supported **Ubuntu 24.04 aarch64** image and follow the 24.04 path described in [Ubuntu version](#ubuntu-version). Confirm with the **Select image** button.
+         **Note:** select **aarch64** for an Ampere ARM server, and use the standard Ubuntu image rather than Minimal Ubuntu.
       5. Under **Shape** click **Change shape** and set the following:
          - Instance type: `Virtual machine`
          - Shape series: `Ampere`
@@ -186,7 +190,7 @@ Verify that we have a set of SSH key pairs
       - Source CIDR: `0.0.0.0/0`
       - IP Protocol: `UDP`
       - Source Port Range: `All` or leave blank
-      - Destination Port Range `2456-2459`
+      - Destination Port Range `2456-2457`
 5. Click on the **Hamburger menu** and navigate to **Compute**, then **Instances**
 6. In the table next to the name of your instance, you'll see the Public IP. Copy this as we will need this in the next step.
 
@@ -252,20 +256,21 @@ The IP Address we copied in the previous step will be referenced here as `IP_ADD
 # Configuring the Valheim Server
 
 1. Open up the **server_credentials** file with `nano ~/server_credentials` (or text editor of choice)
-2. Adjust the **SERVER_NAME**, **WORLD_NAME** **PASSWORD**, **PUBLIC** as you see fit.  
+2. Adjust **SERVER_NAME**, **WORLD_NAME**, **PASSWORD**, **PUBLIC**, and **CROSSPLAY** as you see fit.
    **Note**: The setup script populated the password field automatically with a random decently strong password.
+   `CROSSPLAY=1` enables the cross-platform backend; `CROSSPLAY=0` uses the Steam backend. The generated launcher also exposes Valheim’s automatic save settings as `SAVE_INTERVAL`, `BACKUPS`, `BACKUP_SHORT`, and `BACKUP_LONG`.
 3. When done, Press `Ctrl+X`, then `y` and finally `Enter`.  
    **Note**: Mac users might need to use the `Cmd` button instead of `Ctrl`
 
 For further customization, you may want to change the `~/valheim_server/start_server.custom.sh` file.
-Here you may add / remove flags and environment variables used by the server, for example when adding mods.
+Here you may add or remove flags and environment variables used by the server, for example when adding mods. The generated launcher uses an argument array so values containing spaces remain intact.
 
-This file is only created if it does not exist, so re-running the setup script will leave it as it, however if there are issues you may remove the `~/valheim_server/start_server.custom.sh` file and re-run the setup script.
+This file is only created if it does not exist, so re-running the setup script will leave it as it. Existing installations should move any custom copy aside, remove `~/valheim_server/start_server.custom.sh`, and re-run the setup script once to generate the Valheim 1.0 launcher with backup and crossplay support; reapply custom changes afterward.
 
 # Starting the Valheim Server
 
 To start the server, run the command `valheim_server start`  
-This will take a couple of minutes as the world is being generated.
+This will take a couple of minutes as the world is being generated. Valheim 1.0 stores a world as a directory containing chunk files and metadata under `~/valheim_data/worlds_local`; do not treat a world as a single `.db` file anymore.
 
 From within the game, it might not show in the **Select Server** list, instead click the **Add server** button and type in the address `IP_ADDRESS:2456` (Using the IP address from[Configuring the Network and firewall rules](###-Configuring-the-Network-and-firewall-rules))
 
@@ -274,21 +279,21 @@ More information can be found in the attached Readme.md file and can be viewed w
 # Updating the Valheim Server
 
 Whenever the Valheim client updates, the server also needs to be updated.  
-To do this, log onto the VM then run the command `valheim_server update`  
-This will stop the running server and update the server files.  
+To do this, log onto the VM then run the command `valheim_server update`.
+This creates a complete `~/valheim_data` archive, stops the running server, and updates the server files.
 Once done, you must start the server using `valheim_server start`
+
+Before manually changing files or branches, create an additional backup with `valheim_server backup`. The helper stops the server briefly so the archive is consistent and stores it under `~/valheim_backups`.
 
 # Crossplay (Console / Game Pass)
 
-**Note**: Crossplay on ARM architecture is currently experimental (thanks to **@bitdo1**).
+**Note**: Crossplay on ARM architecture is still dependent on the FEX emulation layer, so it remains experimental in this project. Valheim 1.0 itself supports crossplay between platforms.
 
-If you'd like to try it out, you can add the `-crossplay` flag to `~/valheim_server/start_server.custom.sh`.
+Set `CROSSPLAY=1` in `~/server_credentials`; the generated launcher adds the `-crossplay` flag automatically. You can also add or remove the flag manually in `~/valheim_server/start_server.custom.sh` if you maintain a custom launcher.
 
-This will configure the server to allow for crossplay support.  
-Do keep in mind that this is experimental and might cause the server to crash.  
-If this is the case, removing the flag will restore functionality.
+This configures the server to allow for crossplay support. On this ARM setup it is experimental and might cause the server to crash; if that happens, set `CROSSPLAY=0` and restart the server.
 
-After crossplay has been enabled, the join procedure is the same as normal using `IP:port`, however you can now also join by using a 6 digit code which can be found in the logs after the server has started (using the `valheim_server logs-live` command).  
+After crossplay has been enabled, the join procedure is the same as normal using `IP:port`, however you can now also join by using a 6 digit code which can be found in the logs after the server has started (using the `valheim_server logs-live` command). Crossplay uses a relay backend and normally does not require Internet port forwarding; direct Steam-backend connections use UDP ports 2456-2457.
 Example log message:  
 `Session "My Valheim server" with join code 295265 and IP 12.34.56.78:2456 is active with 0 player(s)`
 
@@ -296,15 +301,11 @@ Example log message:
 
 # Modding
 
-[BepInEx](https://github.com/BepInEx/BepInEx) currently do not support ARM, hence modding currently seem to not be possible.  
-If this changes in the future, this section will be updated to reflect that.  
-An issue has been raised with BepInEx and can be found here [BepInEx/BepInEx#336](https://github.com/BepInEx/BepInEx/issues/336)
+FEX can execute the x86_64 server on ARM, but it does not make Valheim mods compatible. Valheim 1.0 changed the game and save format, so every mod and mod loader must explicitly support 1.0. BepInEx support on this ARM setup is not guaranteed; test mods against a backup and expect to remove them after updates.
 
-As the default emulation layer has been changed to FEX, modding should now be possible.  
-To allow mods to be run, you may now edit `~/valheim_server/start_server.custom.sh`.
-As described in [Configuring the Valheim Server](#configuring-the-valheim-server), here you can adjust the server parameters and environment variables as you need.
+If you want to experiment, edit `~/valheim_server/start_server.custom.sh` and install only versions that support the current Valheim server build. The project does not bundle a mod loader or promise mod compatibility. For background, see [BepInEx/BepInEx#336](https://github.com/BepInEx/BepInEx/issues/336) and the [Valheim 1.0 FAQ](https://www.valheimgame.com/support/valheim-1-0-faq/).
 
-If you're willing to try to install mods on your ARM instance and are able to so successfully, please do let us know in the [Matrix space](#matrix).
+If you successfully run mods on an ARM instance, please share the details in the [Matrix space](#matrix).
 
 As for a guide to install mods, here is one.  
 https://www.youtube.com/watch?v=h2t9cSFidt0
@@ -324,21 +325,47 @@ This will overwrite the existing script.
 
 This feature was added **Thu, 15 Dec 2022 19:56:51 +0100**.
 
-# Adding Pre-existing worlds
+# Adding pre-existing worlds
 
-If you already have a world you've played on (f.ex hosted on your own computer) and you'd like to continue using it with this server,  
-the following steps can be used.
+Valheim 1.0 changed the on-disk world format. A current local world is a **directory** containing chunk files and metadata; copying only one file can produce an incomplete or new world. Always run `valheim_server backup` before importing or converting a world.
 
-1. Locate your save folder, navigate to this folder:  
-   The files we are interested in are the `.db` and `.fwl` files.
-   _ Windows: `%userprofile%/AppData/LocalLow/IronGate/Valheim/Worlds`
-   _ Linux: `$HOME/.config/unity3d/IronGate/Valheim/worlds`
-2. Stop the Valheim Server with `valheim_server stop`
-3. With an SFTP client (f.ex FileZilla), upload the `.db` and `.fwl` file to the folder: `/home/${USER}/valheim_data/worlds_local`
-4. Edit the `~/server_credentials` and update the `WORLD_NAME` parameter to the name of your World files.  
-   F.ex if you world file was `My_Valheim_World.db` and `My_Valheim_World.fwl`, set it to `WORLD_NAME="My_Valheim_World"`
-5. Start the Valheim Server with `valheim_server start`
-6. Within a few moments the server should be back up and running with the world you uploaded.
+1. Make sure the world is stored locally rather than in Steam Cloud. In Valheim’s save manager, choose **Move to Local**, then exit Valheim cleanly.
+2. Locate the local saves:
+   - Windows: `%userprofile%/AppData/LocalLow/IronGate/Valheim/worlds_local`
+   - Linux: `$HOME/.config/unity3d/IronGate/Valheim/worlds_local`
+3. Stop the server with `valheim_server stop` and create a server backup with `valheim_server backup`.
+4. For a **Valheim 1.0 world**, upload the entire world directory to `~/valheim_data/worlds_local/`. The directory name is the value to use for `WORLD_NAME`; do not rename or flatten the files inside it.
+5. For a **pre-1.0 world**, upload the matching `.db` and `.fwl` files together directly into `~/valheim_data/worlds_local/`. Set `WORLD_NAME` to their shared basename. The first 1.0 launch will convert the legacy pair into the new folder format, so keep the backup until you have verified the result.
+6. Start the server with `valheim_server start` and inspect `valheim_server logs-live` while it loads.
+
+The server’s `-savedir` is set to `~/valheim_data`, so that directory—not the operating system’s default save location—is the one that matters for this installation. Valheim’s official [1.0 FAQ](https://www.valheimgame.com/support/valheim-1-0-faq/) confirms that existing saves remain available, while new content generates correctly only in unexplored areas.
+
+# Installing a world from a .zip file
+
+The repository includes `install_valheim_world.sh` for importing one world archive without manually moving save files. The importer validates the archive, rejects path traversal and symlinks, creates a full `valheim_server backup`, updates `WORLD_NAME`, and preserves the server’s running state.
+
+Download it once on the server:
+
+```bash
+wget https://raw.githubusercontent.com/husjon/valheim_server_oci_setup/refs/heads/main/install_valheim_world.sh -O ~/install_valheim_world.sh
+chmod +x ~/install_valheim_world.sh
+```
+
+Import a world by passing its zip file. The optional second argument overrides the world name:
+
+```bash
+~/install_valheim_world.sh ~/MyWorld.zip
+~/install_valheim_world.sh ~/MyWorld.zip MyWorld
+```
+
+For Valheim 1.0, zip the complete world directory. The script also accepts an archive containing a matching legacy `.db` and `.fwl` pair. If a world with the same name already exists, add `--replace`; use `--no-start` to leave a server that was running before the import stopped:
+
+```bash
+~/install_valheim_world.sh --replace ~/MyWorld.zip
+~/install_valheim_world.sh --no-start ~/MyWorld.zip MyWorld
+```
+
+The importer stores backups under `~/valheim_backups`. Keep the backup until the imported world has loaded successfully.
 
 # Troubleshooting
 
@@ -388,7 +415,7 @@ In case you're new to Matrix, you may do the following to create an account and 
 # Changing versions
 
 This could be useful in case the public version breaks something.
-Make sure you create a backup of the server before switching versions.
+Run `valheim_server backup` before switching versions. After Valheim 1.0 converts a legacy world into the new folder format, an older branch may not be able to read it; keep the generated archive so you can restore the pre-conversion save if needed.
 
 ## Switcing to the Previous Stable Version
 
