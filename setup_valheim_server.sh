@@ -303,15 +303,24 @@ function install_fex_emu() {
         success "Creating RootFS - Done"
     fi
 
+    configure_fex_rootfs
+
     success "Installing FEX Emu - Done"
 }
 
 function fex_rootfs_is_installed() {
     local rootfs_base
 
+    if [[ -n "${FEX_ROOTFS:-}" && -e "${FEX_ROOTFS}" ]]; then
+        return 0
+    fi
+
     for rootfs_base in \
-        "${HOME}/.local/share/fex-emu/RootFS" \
-        "${HOME}/.fex-emu/RootFS"; do
+        "${SERVER_HOME}/.local/share/fex-emu/RootFS" \
+        "${SERVER_HOME}/.fex-emu/RootFS" \
+        "${XDG_DATA_HOME:-}/.fex-emu/RootFS" \
+        "${XDG_DATA_HOME:-}/fex-emu/RootFS"; do
+        [[ -n "${rootfs_base}" ]] || continue
         if [[ -d "${rootfs_base}/${FEX_ROOTFS_NAME}" ]] || \
             [[ -f "${rootfs_base}/${FEX_ROOTFS_NAME}.sqsh" ]] || \
             [[ -f "${rootfs_base}/${FEX_ROOTFS_NAME}.ero" ]]; then
@@ -319,6 +328,43 @@ function fex_rootfs_is_installed() {
         fi
     done
 
+    return 1
+}
+
+function configure_fex_rootfs() {
+    local rootfs_base
+    local rootfs_candidate
+    local requested_rootfs="${FEX_ROOTFS:-${FEX_ROOTFS_NAME}}"
+
+    if [[ -e "${requested_rootfs}" ]]; then
+        FEX_ROOTFS="$(realpath "${requested_rootfs}")"
+        export FEX_ROOTFS
+        info "Using FEX RootFS ${FEX_ROOTFS}"
+        return 0
+    fi
+
+    for rootfs_base in \
+        "${SERVER_HOME}/.local/share/fex-emu/RootFS" \
+        "${SERVER_HOME}/.fex-emu/RootFS" \
+        "${XDG_DATA_HOME:-}/.fex-emu/RootFS" \
+        "${XDG_DATA_HOME:-}/fex-emu/RootFS"; do
+        [[ -n "${rootfs_base}" ]] || continue
+        for rootfs_candidate in \
+            "${rootfs_base}/${requested_rootfs}" \
+            "${rootfs_base}/${requested_rootfs}.sqsh" \
+            "${rootfs_base}/${requested_rootfs}.ero"; do
+            if [[ -e "${rootfs_candidate}" ]]; then
+                FEX_ROOTFS="$(realpath "${rootfs_candidate}")"
+                export FEX_ROOTFS
+                info "Using FEX RootFS ${FEX_ROOTFS}"
+                return 0
+            fi
+        done
+    done
+
+    error "FEX RootFS '${requested_rootfs}' was not found."
+    error "Expected it under ${SERVER_HOME}/.local/share/fex-emu/RootFS, ${SERVER_HOME}/.fex-emu/RootFS, or XDG_DATA_HOME."
+    error "Run FEXRootFSFetcher successfully, then rerun this setup script."
     return 1
 }
 
@@ -410,9 +456,13 @@ function install_crossplay_library() {
 
     info "Looking for the x86_64 PulseAudio library required by crossplay"
     for rootfs_base in \
-        "${HOME}/.local/share/fex-emu/RootFS" \
-        "${HOME}/.fex-emu/RootFS" \
+        "${FEX_ROOTFS:-}" \
+        "${SERVER_HOME}/.local/share/fex-emu/RootFS" \
+        "${SERVER_HOME}/.fex-emu/RootFS" \
+        "${XDG_DATA_HOME:-}/.fex-emu/RootFS" \
+        "${XDG_DATA_HOME:-}/fex-emu/RootFS" \
         "${SERVER_HOME}/steamcmd"; do
+        [[ -n "${rootfs_base}" ]] || continue
         [[ -d ${rootfs_base} ]] || continue
         library_source="$(find "${rootfs_base}" \( -type f -o -type l \) -path '*/usr/lib/x86_64-linux-gnu/libpulse-mainloop-glib.so.0' -print -quit 2>/dev/null)"
         [[ -n ${library_source} ]] && break
@@ -472,6 +522,8 @@ function install_valheim_server_helper() {
 
 		# Stop on error
 		set -e
+
+		export FEX_ROOTFS="${FEX_ROOTFS}"
 
 		function show_usage {
 		    echo "Usage:  \$(basename \$0) COMMAND"
@@ -606,6 +658,8 @@ function install_server_script() {
 			SAVE_DIR="${SERVER_HOME}/valheim_data"
 
 			cd "\${SERVER_DIR}"
+
+			export FEX_ROOTFS="${FEX_ROOTFS}"
 
 			export LD_LIBRARY_PATH=./linux64:\$LD_LIBRARY_PATH
 

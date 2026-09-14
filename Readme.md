@@ -82,6 +82,10 @@ The installer supports Ubuntu **22.04, 24.04, and 26.04 LTS** on `aarch64`/`arm6
 
 Ubuntu 26.04 support uses the Ubuntu 24.04 x86_64 FEX guest RootFS. That is intentional: FEX’s prebuilt 24.04 guest is compatible with a 26.04 host, while the host itself remains Ubuntu 26.04. The installer no longer adds the `armhf` architecture on the default FEX path.
 
+After downloading the RootFS, the installer resolves it to an absolute path and exports `FEX_ROOTFS` for SteamCMD, the Valheim server, and server updates. This avoids the FEX error `Current RootFS path set to ''` when FEX has downloaded a RootFS but has not populated its config file.
+
+If an older installation already shows that error, update the setup script and run it once more. It will reuse the existing RootFS, configure the path, and regenerate the launcher/helper environment.
+
 For OCI Ampere instances, choose a **Canonical Ubuntu aarch64** image. OCI’s current documented platform-image list still provides Ubuntu 24.04 and 22.04 for Arm; if Ubuntu 26.04 is not offered in your tenancy, use a custom/imported 26.04 image or use the documented 24.04 image. Do not select the Minimal Ubuntu image for Arm-based shapes; OCI documents the standard Ubuntu image for Arm. See the [OCI platform image list](https://docs.oracle.com/en-us/iaas/Content/Compute/References/images.htm).
 
 Ubuntu 26.04 is the current Resolute Raccoon LTS release; see the [Ubuntu 26.04 release notes](https://documentation.ubuntu.com/release-notes/26.04/).
