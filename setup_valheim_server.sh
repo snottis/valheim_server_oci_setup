@@ -892,9 +892,12 @@ function main {
     install_valheim_dedicated_server
 
     # Initialize the Server Credentials file
-    if [[ ! -f "${SERVER_HOME}/server_credentials" ]]; then
+    if [[ ! -s "${SERVER_HOME}/server_credentials" ]]; then
         info "Generating server_credentials file"
-        PASSWORD="$(tr -dc "a-zA-Z0-9" </dev/urandom | fold -w "32" | head -n 1)"
+        # Avoid a tr/fold/head pipeline here.  With pipefail enabled, head can
+        # close the pipe early and make tr exit with SIGPIPE before the file is
+        # written.
+        PASSWORD="$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32)))')"
         CROSSPLAY_DEFAULT=0
         [[ $CROSSPLAY_SUPPORT == true ]] && CROSSPLAY_DEFAULT=1
         cat <<-EOF >"${SERVER_HOME}/server_credentials"

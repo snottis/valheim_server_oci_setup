@@ -404,6 +404,8 @@ In case you should experience any issues and would need some assistance, the ins
 
 If SteamCMD reports `Failed to install app '896660' (Missing configuration)` immediately after a failed setup, rerun `bash ~/setup_valheim_server.sh`. SteamCMD may have downloaded its launcher before its first self-update completed; the installer performs that initialization pass before retrying the Valheim installation.
 
+If the log stops immediately after `Generating server_credentials file`, update the installer and run it again. The credentials generator uses Python rather than a `tr | fold | head` pipeline, which avoids an early `SIGPIPE` under the script's `pipefail` setting.
+
 To help with this the following steps should be followed:
 
 1. Create a log output of the running server using the following command:  
