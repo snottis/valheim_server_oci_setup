@@ -27,6 +27,7 @@ set -o pipefail
 CROSSPLAY_SUPPORT=${CROSSPLAY_SUPPORT:-false} # Enables crossplay for a newly generated credentials file
 STEAM_PLATFORM=${STEAM_PLATFORM:-linux64}     # Allow overriding the binary the steamcmd should use
 USE_BOX=${USE_BOX:-false}                     # Box86/Box64 is retained as a legacy Ubuntu 22.04 option
+VALHEIM_SERVER_APP_ID=896660
 
 CURRENT_USER="$(id -un)"
 SERVER_HOME="${HOME}"
@@ -428,6 +429,12 @@ function prepare_fex_for_x86_launch() {
     fi
 }
 
+function run_steamcmd() {
+    FEX_ROOTFS="${FEX_ROOTFS:-}" \
+    STEAM_PLATFORM="${STEAM_PLATFORM}" \
+        "${SERVER_HOME}/steamcmd/steamcmd.sh" "$@"
+}
+
 function uninstall_fex_emu() {
     ARM_INSTRUCTION_SET=${ARM_INSTRUCTION_SET:-$(determine_arm_instruction_set)}
 
@@ -459,11 +466,16 @@ function install_steamcmd() {
         mkdir -p "${SERVER_HOME}/steamcmd"
         cd "${SERVER_HOME}/steamcmd"
         curl --fail --silent --show-error --location "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar --extract --gzip --verbose
-
-        FEX_ROOTFS="${FEX_ROOTFS:-}" STEAM_PLATFORM="${STEAM_PLATFORM}" ./steamcmd.sh +quit
-
         success "Fetching steamcmd - Done"
     fi
+
+    # The archive can be left behind when setup fails during FEX startup.  Do
+    # not use the presence of steamcmd.sh as proof that SteamCMD initialized;
+    # always let it complete its self-update before app_update is attempted.
+    info "Initializing steamcmd"
+    run_steamcmd +quit
+    success "Initializing steamcmd - Done"
+
     # Add steamcmd steamclient.so symlink
     info "Adding steamclient.so symlink"
     mkdir -p "${SERVER_HOME}/.steam/sdk64"
@@ -481,11 +493,11 @@ function install_valheim_dedicated_server() {
     if [[ ! -x "${SERVER_HOME}/valheim_server/valheim_server.x86_64" ]]; then
         info "Installing Valheim Dedicated Server"
         cd "${SERVER_HOME}/steamcmd"
-        FEX_ROOTFS="${FEX_ROOTFS:-}" STEAM_PLATFORM="${STEAM_PLATFORM}" ./steamcmd.sh \
+        run_steamcmd \
             +@sSteamCmdForcePlatformType linux \
             +force_install_dir "${SERVER_HOME}/valheim_server" \
             +login anonymous \
-            +app_update 896660 validate \
+            +app_update "${VALHEIM_SERVER_APP_ID}" -beta public validate \
             +quit
         success "Installing Valheim Dedicated Server - Done"
     fi
@@ -672,11 +684,11 @@ function install_valheim_server_helper() {
 		        return 1
 		    fi
 
-		    if ! STEAM_PLATFORM=${STEAM_PLATFORM} "${SERVER_HOME}/steamcmd/steamcmd.sh" \\
+		    if ! FEX_ROOTFS="${FEX_ROOTFS}" STEAM_PLATFORM="${STEAM_PLATFORM}" "${SERVER_HOME}/steamcmd/steamcmd.sh" \\
 		        +@sSteamCmdForcePlatformType linux \\
 		        +force_install_dir "${SERVER_HOME}/valheim_server" \\
 		        +login anonymous \\
-		        +app_update 896660 validate \\
+		        +app_update ${VALHEIM_SERVER_APP_ID} -beta public validate \\
 		        +quit; then
 		        if \${was_active}; then
 		            start_server

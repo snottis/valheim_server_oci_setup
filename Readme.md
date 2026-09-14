@@ -265,6 +265,8 @@ The IP Address we copied in the previous step will be referenced here as `IP_ADD
    The installation will take a couple of minutes to complete as the script installs all the necessary packages and set up the server with initial values.  
    Once it finishes it let you know that we need to make a small edit to one file then start the server.
 
+   If a previous attempt stopped while FEX or SteamCMD was starting, run the setup command again. The installer now initializes SteamCMD on every run before downloading the Valheim server, so a partially downloaded SteamCMD directory can be recovered without deleting it.
+
 # Configuring the Valheim Server
 
 1. Open up the **server_credentials** file with `nano ~/server_credentials` (or text editor of choice)
@@ -294,6 +296,8 @@ Whenever the Valheim client updates, the server also needs to be updated.
 To do this, log onto the VM then run the command `valheim_server update`.
 This creates a complete `~/valheim_data` archive, stops the running server, and updates the server files.
 Once done, you must start the server using `valheim_server start`
+
+The installer and `valheim_server update` explicitly select Steam’s released `public` branch. This prevents a stale pre-1.0 or test branch from being reused after the Valheim 1.0 release.
 
 Before manually changing files or branches, create an additional backup with `valheim_server backup`. The helper stops the server briefly so the archive is consistent and stores it under `~/valheim_backups`.
 
@@ -397,6 +401,8 @@ The importer stores backups under `~/valheim_backups`. Keep the backup until the
 # Troubleshooting
 
 In case you should experience any issues and would need some assistance, the install logs and server logs are helpful to troubleshoot the issue.
+
+If SteamCMD reports `Failed to install app '896660' (Missing configuration)` immediately after a failed setup, rerun `bash ~/setup_valheim_server.sh`. SteamCMD may have downloaded its launcher before its first self-update completed; the installer performs that initialization pass before retrying the Valheim installation.
 
 To help with this the following steps should be followed:
 
