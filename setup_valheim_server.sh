@@ -368,6 +368,12 @@ function configure_fex_rootfs() {
     return 1
 }
 
+function prepare_fex_for_x86_launch() {
+    if is_arm64 && [[ ${USE_BOX} != true ]]; then
+        configure_fex_rootfs
+    fi
+}
+
 function uninstall_fex_emu() {
     ARM_INSTRUCTION_SET=${ARM_INSTRUCTION_SET:-$(determine_arm_instruction_set)}
 
@@ -386,6 +392,8 @@ function uninstall_fex_emu() {
 }
 
 function install_steamcmd() {
+    prepare_fex_for_x86_launch
+
     if [[ ! -f "${SERVER_HOME}/steamcmd/steamcmd.sh" ]]; then
         if is_x86_64; then
             sudo dpkg --add-architecture i386
@@ -398,7 +406,7 @@ function install_steamcmd() {
         cd "${SERVER_HOME}/steamcmd"
         curl --fail --silent --show-error --location "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar --extract --gzip --verbose
 
-        STEAM_PLATFORM=${STEAM_PLATFORM} ./steamcmd.sh +quit
+        FEX_ROOTFS="${FEX_ROOTFS:-}" STEAM_PLATFORM="${STEAM_PLATFORM}" ./steamcmd.sh +quit
 
         success "Fetching steamcmd - Done"
     fi
@@ -409,6 +417,8 @@ function install_steamcmd() {
 }
 
 function install_valheim_dedicated_server() {
+    prepare_fex_for_x86_launch
+
     sudo apt-get install -y \
         libatomic1 \
         libpulse-dev \
@@ -417,7 +427,7 @@ function install_valheim_dedicated_server() {
     if [[ ! -x "${SERVER_HOME}/valheim_server/valheim_server.x86_64" ]]; then
         info "Installing Valheim Dedicated Server"
         cd "${SERVER_HOME}/steamcmd"
-        STEAM_PLATFORM=${STEAM_PLATFORM} ./steamcmd.sh \
+        FEX_ROOTFS="${FEX_ROOTFS:-}" STEAM_PLATFORM="${STEAM_PLATFORM}" ./steamcmd.sh \
             +@sSteamCmdForcePlatformType linux \
             +force_install_dir "${SERVER_HOME}/valheim_server" \
             +login anonymous \
