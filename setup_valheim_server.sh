@@ -648,18 +648,21 @@ function install_valheim_server_helper() {
 		    local save_dir="${SERVER_HOME}/valheim_data"
 		    local launcher="${SERVER_HOME}/valheim_server/start_server.custom.sh"
 		    local parsed_save_dir=""
+		    local config_file
 
-		    if [[ -f "${launcher}" ]]; then
-		        # Do not source the launcher: it executes the server. Read only its
-		        # SAVE_DIR assignment so backups follow custom save locations too.
-		        parsed_save_dir="\$(sed -n -E \
-		            -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR="([^"]*)"[[:space:]]*$/\2/p' \
-		            -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=([^[:space:]#]+)[[:space:]]*$/\2/p' \
-		            "${launcher}" | tail -n 1)"
-		        if [[ -n "\${parsed_save_dir}" ]]; then
+		    for config_file in "${SERVER_HOME}/server_credentials" "${launcher}"; do
+		        if [[ -z "\${parsed_save_dir}" && -f "\${config_file}" ]]; then
+		            # Do not source the launcher: it executes the server. Read only
+		            # the SAVE_DIR assignment so backups follow custom locations.
+		            parsed_save_dir="\$(sed -n -E \
+		                -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR="([^"]*)"[[:space:]]*$/\2/p' \
+		                -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=([^[:space:]#]+)[[:space:]]*$/\2/p' \
+		                "\${config_file}" | tail -n 1)"
+		        fi
+		    done
+		    if [[ -n "\${parsed_save_dir}" ]]; then
 		            save_dir="\${parsed_save_dir}"
 		        fi
-		    fi
 
 		    save_dir="\${save_dir//\\\$\\{HOME\\}/${SERVER_HOME}}"
 		    save_dir="\${save_dir//\\\$HOME/${SERVER_HOME}}"
@@ -763,7 +766,7 @@ function install_server_script() {
 			# If this startup script stops working, please rename it and re-run the setup script, this will regenerate it.
 
 			SERVER_DIR="${SERVER_HOME}/valheim_server"
-			SAVE_DIR="${SERVER_HOME}/valheim_data"
+			SAVE_DIR="\${SAVE_DIR:-${SERVER_HOME}/valheim_data}"
 
 			cd "\${SERVER_DIR}"
 
@@ -787,6 +790,96 @@ function install_server_script() {
 			    -backupshort "\${BACKUP_SHORT:-7200}"
 			    -backuplong  "\${BACKUP_LONG:-43200}"
 			)
+
+			world_preset="\${WORLD_PRESET:-normal}"
+			case "\${world_preset}" in
+			    ""|normal)
+			        ;;
+			    casual|easy|hard|hardcore|immersive|hammer)
+			        launch_args+=( -preset "\${world_preset}" );;
+			    *)
+			        echo "Invalid WORLD_PRESET='\${WORLD_PRESET}'. Use normal, casual, easy, hard, hardcore, immersive, or hammer." >&2
+			        exit 1;;
+			esac
+
+			combat_difficulty="\${COMBAT_DIFFICULTY:-normal}"
+			case "\${combat_difficulty}" in
+			    ""|normal)
+			        ;;
+			    veryeasy|easy|hard|veryhard)
+			        launch_args+=( -modifier combat "\${combat_difficulty}" );;
+			    *)
+			        echo "Invalid COMBAT_DIFFICULTY='\${COMBAT_DIFFICULTY}'. Use normal, veryeasy, easy, hard, or veryhard." >&2
+			        exit 1;;
+			esac
+
+			death_penalty="\${DEATH_PENALTY:-normal}"
+			case "\${death_penalty}" in
+			    ""|normal)
+			        ;;
+			    casual|veryeasy|easy|hard|hardcore)
+			        launch_args+=( -modifier deathpenalty "\${death_penalty}" );;
+			    *)
+			        echo "Invalid DEATH_PENALTY='\${DEATH_PENALTY}'. Use normal, casual, veryeasy, easy, hard, or hardcore." >&2
+			        exit 1;;
+			esac
+
+			resource_modifier=""
+			case "\${RESOURCE_RATE:-1x}" in
+			    ""|1|1x|normal)
+			        ;;
+			    0.5|0.5x|muchless)
+			        resource_modifier=muchless;;
+			    0.75|0.75x|less)
+			        resource_modifier=less;;
+			    1.5|1.5x|more)
+			        resource_modifier=more;;
+			    2|2x|muchmore)
+			        resource_modifier=muchmore;;
+			    3|3x|most)
+			        resource_modifier=most;;
+			    *)
+			        echo "Invalid RESOURCE_RATE='\${RESOURCE_RATE}'. Use 1x, 1.5x, 2x, or 3x." >&2
+			        exit 1;;
+			esac
+			if [[ -n "\${resource_modifier}" ]]; then
+			    launch_args+=( -modifier resources "\${resource_modifier}" )
+			fi
+
+			raid_rate="\${RAID_RATE:-normal}"
+			case "\${raid_rate}" in
+			    ""|normal)
+			        ;;
+			    none|muchless|less|more|muchmore)
+			        launch_args+=( -modifier raids "\${raid_rate}" );;
+			    *)
+			        echo "Invalid RAID_RATE='\${RAID_RATE}'. Use normal, none, muchless, less, more, or muchmore." >&2
+			        exit 1;;
+			esac
+
+			portal_mode="\${PORTAL_MODE:-normal}"
+			case "\${portal_mode}" in
+			    ""|normal)
+			        ;;
+			    casual|hard|veryhard)
+			        launch_args+=( -modifier portals "\${portal_mode}" );;
+			    *)
+			        echo "Invalid PORTAL_MODE='\${PORTAL_MODE}'. Use normal, casual, hard, or veryhard." >&2
+			        exit 1;;
+			esac
+
+			if [[ -n "\${WORLD_KEYS:-}" ]]; then
+			    IFS=',' read -r -a world_keys <<< "\${WORLD_KEYS}"
+			    for world_key in "\${world_keys[@]}"; do
+			        case "\${world_key}" in
+			            nobuildcost|playerevents|passivemobs|nomap)
+			                launch_args+=( -setkey "\${world_key}" );;
+			            *)
+			                echo "Invalid WORLD_KEYS entry='\${world_key}'. Use nobuildcost, playerevents, passivemobs, or nomap." >&2
+			                exit 1;;
+			        esac
+			    done
+			fi
 
 			if [[ \${CROSSPLAY:-0} == 1 ]]; then
 			    launch_args+=( -crossplay )
@@ -857,6 +950,11 @@ function install_readmefile() {
 		## Creating a full save backup
 		valheim_server backup
 		# Backups are stored under ~/valheim_backups.
+
+		## Server and world configuration
+		Edit ~/server_credentials for SERVER_NAME, WORLD_NAME, PASSWORD, PORT,
+		SAVE_DIR, RESOURCE_RATE, PORTAL_MODE, and the other world modifiers.
+		Set PORTAL_MODE=casual to allow metal through portals. Restart after changes.
 
 		# Enable / Disable crossplay
 		Edit CROSSPLAY in ~/server_credentials: 1 enables crossplay, 0 disables it.
@@ -948,11 +1046,23 @@ function main {
 
 			PORT=2456
 
+			# Valheim save root; use an absolute path
+			SAVE_DIR="${SERVER_HOME}/valheim_data"
+
 			# Valheim 1.0 save and automatic backup settings
 			SAVE_INTERVAL=1800
 			BACKUPS=4
 			BACKUP_SHORT=7200
 			BACKUP_LONG=43200
+
+			# Resource rate: 1x, 1.5x, 2x, or 3x (1x is normal)
+			RESOURCE_RATE=1x
+			COMBAT_DIFFICULTY=normal
+			DEATH_PENALTY=normal
+			RAID_RATE=normal
+			PORTAL_MODE=normal
+			WORLD_PRESET=normal
+			WORLD_KEYS=
 
 			# Crossplay backend (1=yes, 0=no)
 			CROSSPLAY=${CROSSPLAY_DEFAULT}
@@ -975,11 +1085,60 @@ function main {
         [[ $CROSSPLAY_SUPPORT == true ]] && CROSSPLAY_DEFAULT=1
         echo "CROSSPLAY=${CROSSPLAY_DEFAULT}" >>"${credentials_file}"
     fi
+    if ! grep -q '^RESOURCE_RATE=' "${credentials_file}"; then
+        echo "RESOURCE_RATE=1x" >>"${credentials_file}"
+    fi
+    if ! grep -q '^SAVE_DIR=' "${credentials_file}"; then
+        local existing_save_dir=""
+        if [[ -f "${SERVER_SCRIPT_PATH}" ]]; then
+            existing_save_dir="$(sed -n -E \
+                -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR="([^"]*)"[[:space:]]*$/\2/p' \
+                -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=([^[:space:]#]+)[[:space:]]*$/\2/p' \
+                "${SERVER_SCRIPT_PATH}" | tail -n 1)"
+        fi
+        if [[ -z "${existing_save_dir}" ]]; then
+            existing_save_dir="${SERVER_HOME}/valheim_data"
+        fi
+        echo "SAVE_DIR=${existing_save_dir}" >>"${credentials_file}"
+    fi
+    if ! grep -q '^WORLD_PRESET=' "${credentials_file}"; then
+        echo "WORLD_PRESET=normal" >>"${credentials_file}"
+    fi
+    if ! grep -q '^COMBAT_DIFFICULTY=' "${credentials_file}"; then
+        echo "COMBAT_DIFFICULTY=normal" >>"${credentials_file}"
+    fi
+    if ! grep -q '^DEATH_PENALTY=' "${credentials_file}"; then
+        echo "DEATH_PENALTY=normal" >>"${credentials_file}"
+    fi
+    if ! grep -q '^RAID_RATE=' "${credentials_file}"; then
+        echo "RAID_RATE=normal" >>"${credentials_file}"
+    fi
+    if ! grep -q '^PORTAL_MODE=' "${credentials_file}"; then
+        echo "PORTAL_MODE=normal" >>"${credentials_file}"
+    fi
+    if ! grep -q '^WORLD_KEYS=' "${credentials_file}"; then
+        echo "WORLD_KEYS=" >>"${credentials_file}"
+    fi
 
-    # Create the Valheim 1.0 save root before an initial world is imported or
-    # generated.  The world importer relies on this directory to distinguish a
-    # configured server from an unconfigured home directory.
-    mkdir -p "${SERVER_HOME}/valheim_data/worlds_local"
+    # Create the configured Valheim 1.0 save root before an initial world is
+    # imported or generated. Read the value without sourcing credentials.
+    local save_dir="${SERVER_HOME}/valheim_data"
+    local configured_save_dir
+    configured_save_dir="$(grep -E '^SAVE_DIR=' "${credentials_file}" | tail -n 1 | cut -d= -f2- || true)"
+    configured_save_dir="${configured_save_dir#\"}"
+    configured_save_dir="${configured_save_dir%\"}"
+    configured_save_dir="${configured_save_dir//\$\{HOME\}/${SERVER_HOME}}"
+    configured_save_dir="${configured_save_dir//\$HOME/${SERVER_HOME}}"
+    configured_save_dir="${configured_save_dir//\$\{SERVER_HOME\}/${SERVER_HOME}}"
+    configured_save_dir="${configured_save_dir//\$SERVER_HOME/${SERVER_HOME}}"
+    if [[ -n "${configured_save_dir}" ]]; then
+        if [[ "${configured_save_dir}" != /* || "${configured_save_dir}" == "/" ]]; then
+            error "SAVE_DIR must be a non-root absolute path: ${configured_save_dir}"
+            return 1
+        fi
+        save_dir="${configured_save_dir%/}"
+    fi
+    mkdir -p "${save_dir}/worlds_local"
 
     # The FEX RootFS contains the x86_64 library needed by crossplay; this
     # avoids pinning the installer to a removed Ubuntu 22.04 package URL.

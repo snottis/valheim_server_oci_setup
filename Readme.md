@@ -270,9 +270,9 @@ The IP Address we copied in the previous step will be referenced here as `IP_ADD
 # Configuring the Valheim Server
 
 1. Open up the **server_credentials** file with `nano ~/server_credentials` (or text editor of choice)
-2. Adjust **SERVER_NAME**, **WORLD_NAME**, **PASSWORD**, **PUBLIC**, and **CROSSPLAY** as you see fit.
+2. Adjust **SERVER_NAME**, **WORLD_NAME**, **PASSWORD**, **PUBLIC**, **RESOURCE_RATE**, and **CROSSPLAY** as you see fit.
    **Note**: The setup script populated the password field automatically with a random decently strong password.
-   `CROSSPLAY=1` enables the cross-platform backend; `CROSSPLAY=0` uses the Steam backend. The generated launcher also exposes Valheim’s automatic save settings as `SAVE_INTERVAL`, `BACKUPS`, `BACKUP_SHORT`, and `BACKUP_LONG`.
+   `CROSSPLAY=1` enables the cross-platform backend; `CROSSPLAY=0` uses the Steam backend. `RESOURCE_RATE` accepts `1x`, `1.5x`, `2x`, or `3x`; `1x` is normal. The generated launcher also exposes Valheim’s automatic save settings as `SAVE_INTERVAL`, `BACKUPS`, `BACKUP_SHORT`, and `BACKUP_LONG`.
 3. When done, Press `Ctrl+X`, then `y` and finally `Enter`.  
    **Note**: Mac users might need to use the `Cmd` button instead of `Ctrl`
 
@@ -286,9 +286,56 @@ This file is only created if it does not exist, so re-running the setup script w
 To start the server, run the command `valheim_server start`  
 This will take a couple of minutes as the world is being generated. Valheim 1.0 stores a world as a directory containing chunk files and metadata under `~/valheim_data/worlds_local`; do not treat a world as a single `.db` file anymore.
 
+The setup installs a **user** systemd unit at `~/.config/systemd/user/valheim_server.service`, enables it for startup after login/boot, and installs the `valheim_server` helper in `/usr/sbin/`. Setup does not start the server until you run the start command. The equivalent systemd command is:
+
+```bash
+systemctl --user enable --now valheim_server.service
+```
+
+Useful service commands (run as `ubuntu`, without `sudo`):
+
+```bash
+systemctl --user status valheim_server.service
+systemctl --user stop valheim_server.service
+systemctl --user restart valheim_server.service
+journalctl --user -u valheim_server.service -f
+```
+
 From within the game, it might not show in the **Select Server** list, instead click the **Add server** button and type in the address `IP_ADDRESS:2456` (Using the IP address from[Configuring the Network and firewall rules](###-Configuring-the-Network-and-firewall-rules))
 
 More information can be found in the attached Readme.md file and can be viewed with `cat ~/Readme.md`
+
+# World modifiers
+
+World modifiers are world settings, not files that need to be added to a world zip. The setup script translates the following credentials into Valheim’s official `-preset`, `-modifier`, and `-setkey` arguments:
+
+| Credential | Values |
+| --- | --- |
+| `WORLD_PRESET` | `normal`, `casual`, `easy`, `hard`, `hardcore`, `immersive`, `hammer` |
+| `COMBAT_DIFFICULTY` | `normal`, `veryeasy`, `easy`, `hard`, `veryhard` |
+| `DEATH_PENALTY` | `normal`, `casual`, `veryeasy`, `easy`, `hard`, `hardcore` |
+| `RESOURCE_RATE` | `1x`, `1.5x`, `2x`, `3x` |
+| `RAID_RATE` | `normal`, `none`, `muchless`, `less`, `more`, `muchmore` |
+| `PORTAL_MODE` | `normal`, `casual`, `hard`, `veryhard` |
+| `WORLD_KEYS` | Comma-separated: `nobuildcost`, `playerevents`, `passivemobs`, `nomap` |
+
+For example, to allow metal and other normally restricted items through portals and use 2x resources:
+
+```bash
+PORTAL_MODE=casual
+RESOURCE_RATE=2x
+```
+
+The resource mapping is `1x` normal, `1.5x` → `more`, `2x` → `muchmore`, and `3x` → `most`. `PORTAL_MODE=casual` removes the normal portal restrictions, including the restriction on transporting metal.
+
+Edit the relevant values in `~/server_credentials`, then restart the server:
+
+```bash
+nano ~/server_credentials
+valheim_server restart
+```
+
+The official [dedicated-server guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) documents the `-modifier resources` values. Back up the world before changing gameplay settings with `valheim_server backup`.
 
 # Updating the Valheim Server
 
@@ -369,9 +416,9 @@ Valheim 1.0 changed the on-disk world format. A current local world is a **direc
 5. For a **pre-1.0 world**, upload the matching `.db` and `.fwl` files together directly into `~/valheim_data/worlds_local/`. Set `WORLD_NAME` to their shared basename. The first 1.0 launch will convert the legacy pair into the new folder format, so keep the backup until you have verified the result.
 6. Start the server with `valheim_server start` and inspect `valheim_server logs-live` while it loads.
 
-The server’s generated start script sets `-savedir` to `~/valheim_data`, so that directory—not the operating system’s default Linux location—is the one that matters for this installation. Valheim’s official [dedicated-server guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) documents `-savedir` as the setting that overrides the default save root. Within that root, Valheim 1.0 stores each world under `worlds_local/<WORLD_NAME>/` as a directory of save files. The importer reads the `SAVE_DIR` assignment from the generated start script, and the backup helper follows it too.
+The server’s generated start script passes `SAVE_DIR` to `-savedir`, so that directory—not the operating system’s default Linux location—is the one that matters for this installation. Valheim’s official [dedicated-server guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) documents `-savedir` as the setting that overrides the default save root. Within that root, Valheim 1.0 stores each world under `worlds_local/<WORLD_NAME>/` as a directory of save files. The importer and backup helper read `SAVE_DIR` from `server_credentials`.
 
-To use a different save root, edit `SAVE_DIR="/absolute/path"` in `~/valheim_server/start_server.custom.sh` and leave `-savedir "${SAVE_DIR}"` in place. The directory must be an absolute path. If you use a custom launcher that is not at that location, pass the matching path explicitly when importing: `VALHEIM_SAVE_DIR=/absolute/path bash ~/install_valheim_world.sh World.zip`.
+To use a different save root, edit `SAVE_DIR="/absolute/path"` in `~/server_credentials`. The directory must be an absolute path. Leave `-savedir "${SAVE_DIR}"` in the generated launcher. If you use a custom launcher that is not at that location, pass the matching path explicitly when importing: `VALHEIM_SAVE_DIR=/absolute/path bash ~/install_valheim_world.sh World.zip`.
 
 # Installing a world from a .zip file
 

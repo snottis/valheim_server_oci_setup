@@ -187,31 +187,35 @@ require_commands() {
 
 resolve_save_dir() {
     local configured_save_dir="${VALHEIM_SAVE_DIR:-}"
-    local launcher_save_dir=""
+    local file_save_dir=""
+    local config_file
 
-    if [[ -z "${configured_save_dir}" && -f "${SERVER_SCRIPT_PATH}" ]]; then
-        # Do not source the launcher: it is user-editable and executes the
-        # server. Read only its SAVE_DIR assignment instead.
-        launcher_save_dir="$(awk -v home="${SERVER_HOME}" '
-            /^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=/ {
-                value = $0
-                sub(/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=[[:space:]]*/, "", value)
-                sub(/[[:space:]]+#.*$/, "", value)
-                if (value ~ /^"/) {
-                    sub(/^"/, "", value)
-                    sub(/"[[:space:]]*$/, "", value)
-                } else {
-                    sub(/[[:space:]]+$/, "", value)
+    for config_file in "${CREDENTIALS_FILE}" "${SERVER_SCRIPT_PATH}"; do
+        if [[ -z "${configured_save_dir}" && -f "${config_file}" ]]; then
+            # Do not source the launcher: it is user-editable and executes the
+            # server. Read only its SAVE_DIR assignment instead. Credentials
+            # take precedence because the launcher uses them when available.
+            file_save_dir="$(awk -v home="${SERVER_HOME}" '
+                /^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=/ {
+                    value = $0
+                    sub(/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=[[:space:]]*/, "", value)
+                    sub(/[[:space:]]+#.*$/, "", value)
+                    if (value ~ /^"/) {
+                        sub(/^"/, "", value)
+                        sub(/"[[:space:]]*$/, "", value)
+                    } else {
+                        sub(/[[:space:]]+$/, "", value)
+                    }
+                    gsub(/\$\{HOME\}|\$HOME|\$\{SERVER_HOME\}|\$SERVER_HOME/, home, value)
+                    latest = value
                 }
-                gsub(/\$\{HOME\}|\$HOME|\$\{SERVER_HOME\}|\$SERVER_HOME/, home, value)
-                latest = value
-            }
-            END { print latest }
-        ' "${SERVER_SCRIPT_PATH}")"
-        if [[ -n "${launcher_save_dir}" ]]; then
-            configured_save_dir="${launcher_save_dir}"
+                END { print latest }
+            ' "${config_file}")"
+            if [[ -n "${file_save_dir}" ]]; then
+                configured_save_dir="${file_save_dir}"
+            fi
         fi
-    fi
+    done
 
     if [[ -z "${configured_save_dir}" ]]; then
         configured_save_dir="${SERVER_HOME}/valheim_data"
