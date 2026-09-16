@@ -5,9 +5,11 @@ set -o pipefail
 
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly SERVER_HOME="${HOME}"
-readonly SAVE_DIR="${SERVER_HOME}/valheim_data"
-readonly WORLD_DIR="${SAVE_DIR}/worlds_local"
 readonly CREDENTIALS_FILE="${SERVER_HOME}/server_credentials"
+readonly SERVER_SCRIPT_PATH="${SERVER_HOME}/valheim_server/start_server.custom.sh"
+
+SAVE_DIR="${VALHEIM_SAVE_DIR:-${SERVER_HOME}/valheim_data}"
+WORLD_DIR="${SAVE_DIR}/worlds_local"
 
 REPLACE_EXISTING=false
 NO_START=false
@@ -181,6 +183,46 @@ require_commands() {
             exit 1
         fi
     done
+}
+
+resolve_save_dir() {
+    local configured_save_dir="${VALHEIM_SAVE_DIR:-}"
+    local launcher_save_dir=""
+
+    if [[ -z "${configured_save_dir}" && -f "${SERVER_SCRIPT_PATH}" ]]; then
+        # Do not source the launcher: it is user-editable and executes the
+        # server. Read only its SAVE_DIR assignment instead.
+        launcher_save_dir="$(awk -v home="${SERVER_HOME}" '
+            /^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=/ {
+                value = $0
+                sub(/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=[[:space:]]*/, "", value)
+                sub(/[[:space:]]+#.*$/, "", value)
+                if (value ~ /^"/) {
+                    sub(/^"/, "", value)
+                    sub(/"[[:space:]]*$/, "", value)
+                } else {
+                    sub(/[[:space:]]+$/, "", value)
+                }
+                gsub(/\$\{HOME\}|\$HOME|\$\{SERVER_HOME\}|\$SERVER_HOME/, home, value)
+                latest = value
+            }
+            END { print latest }
+        ' "${SERVER_SCRIPT_PATH}")"
+        if [[ -n "${launcher_save_dir}" ]]; then
+            configured_save_dir="${launcher_save_dir}"
+        fi
+    fi
+
+    if [[ -z "${configured_save_dir}" ]]; then
+        configured_save_dir="${SERVER_HOME}/valheim_data"
+    fi
+    if [[ "${configured_save_dir}" != /* ]]; then
+        error "The configured Valheim save directory must be an absolute path: ${configured_save_dir}"
+        exit 1
+    fi
+
+    SAVE_DIR="${configured_save_dir%/}"
+    WORLD_DIR="${SAVE_DIR}/worlds_local"
 }
 
 validate_archive_entries() {
@@ -371,6 +413,7 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 require_commands
+resolve_save_dir
 
 if [[ ! -f "${CREDENTIALS_FILE}" ]]; then
     error "${CREDENTIALS_FILE} was not found. Run setup_valheim_server.sh first."
@@ -378,8 +421,8 @@ if [[ ! -f "${CREDENTIALS_FILE}" ]]; then
 fi
 
 if [[ ! -d "${SAVE_DIR}" ]]; then
-    error "${SAVE_DIR} was not found. Run setup_valheim_server.sh first."
-    exit 1
+    info "Creating Valheim save directory: ${SAVE_DIR}"
+    mkdir -p -- "${WORLD_DIR}"
 fi
 
 if [[ ! -f "${ZIP_FILE}" ]]; then

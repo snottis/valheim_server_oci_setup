@@ -644,10 +644,42 @@ function install_valheim_server_helper() {
 		    stop_server && start_server
 		}
 
+		function configured_save_dir {
+		    local save_dir="${SERVER_HOME}/valheim_data"
+		    local launcher="${SERVER_HOME}/valheim_server/start_server.custom.sh"
+		    local parsed_save_dir=""
+
+		    if [[ -f "${launcher}" ]]; then
+		        # Do not source the launcher: it executes the server. Read only its
+		        # SAVE_DIR assignment so backups follow custom save locations too.
+		        parsed_save_dir="\$(sed -n -E \
+		            -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR="([^"]*)"[[:space:]]*$/\2/p' \
+		            -e 's/^[[:space:]]*(export[[:space:]]+)?SAVE_DIR=([^[:space:]#]+)[[:space:]]*$/\2/p' \
+		            "${launcher}" | tail -n 1)"
+		        if [[ -n "\${parsed_save_dir}" ]]; then
+		            save_dir="\${parsed_save_dir}"
+		        fi
+		    fi
+
+		    save_dir="\${save_dir//\\\$\\{HOME\\}/${SERVER_HOME}}"
+		    save_dir="\${save_dir//\\\$HOME/${SERVER_HOME}}"
+		    save_dir="\${save_dir//\\\$\\{SERVER_HOME\\}/${SERVER_HOME}}"
+		    save_dir="\${save_dir//\\\$SERVER_HOME/${SERVER_HOME}}"
+		    save_dir="\${save_dir%/}"
+		    if [[ -z "\${save_dir}" || "\${save_dir}" == "/" || "\${save_dir}" != /* ]]; then
+		        echo "Configured Valheim save directory must be a non-root absolute path: \${save_dir}" >&2
+		        return 1
+		    fi
+		    printf '%s\\n' "\${save_dir}"
+		}
+
 		function create_backup {
-		    mkdir -p "${SERVER_HOME}/valheim_data" "${SERVER_HOME}/valheim_backups"
-		    local archive="${SERVER_HOME}/valheim_backups/valheim_data-\$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-		    tar --create --gzip --file="\${archive}" --directory="${SERVER_HOME}" valheim_data
+		    local save_dir
+		    save_dir="\$(configured_save_dir)"
+		    mkdir -p "\${save_dir}" "${SERVER_HOME}/valheim_backups"
+		    local archive="${SERVER_HOME}/valheim_backups/\$(basename "\${save_dir}")-\$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+		    tar --create --gzip --file="\${archive}" \
+		        --directory="\$(dirname "\${save_dir}")" "\$(basename "\${save_dir}")"
 		    echo "Backup created: \${archive}"
 		}
 
@@ -943,6 +975,11 @@ function main {
         [[ $CROSSPLAY_SUPPORT == true ]] && CROSSPLAY_DEFAULT=1
         echo "CROSSPLAY=${CROSSPLAY_DEFAULT}" >>"${credentials_file}"
     fi
+
+    # Create the Valheim 1.0 save root before an initial world is imported or
+    # generated.  The world importer relies on this directory to distinguish a
+    # configured server from an unconfigured home directory.
+    mkdir -p "${SERVER_HOME}/valheim_data/worlds_local"
 
     # The FEX RootFS contains the x86_64 library needed by crossplay; this
     # avoids pinning the installer to a removed Ubuntu 22.04 package URL.

@@ -369,11 +369,13 @@ Valheim 1.0 changed the on-disk world format. A current local world is a **direc
 5. For a **pre-1.0 world**, upload the matching `.db` and `.fwl` files together directly into `~/valheim_data/worlds_local/`. Set `WORLD_NAME` to their shared basename. The first 1.0 launch will convert the legacy pair into the new folder format, so keep the backup until you have verified the result.
 6. Start the server with `valheim_server start` and inspect `valheim_server logs-live` while it loads.
 
-The server’s `-savedir` is set to `~/valheim_data`, so that directory—not the operating system’s default save location—is the one that matters for this installation. Valheim’s official [1.0 FAQ](https://www.valheimgame.com/support/valheim-1-0-faq/) confirms that existing saves remain available, while new content generates correctly only in unexplored areas.
+The server’s generated start script sets `-savedir` to `~/valheim_data`, so that directory—not the operating system’s default Linux location—is the one that matters for this installation. Valheim’s official [dedicated-server guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) documents `-savedir` as the setting that overrides the default save root. Within that root, Valheim 1.0 stores each world under `worlds_local/<WORLD_NAME>/` as a directory of save files. The importer reads the `SAVE_DIR` assignment from the generated start script, and the backup helper follows it too.
+
+To use a different save root, edit `SAVE_DIR="/absolute/path"` in `~/valheim_server/start_server.custom.sh` and leave `-savedir "${SAVE_DIR}"` in place. The directory must be an absolute path. If you use a custom launcher that is not at that location, pass the matching path explicitly when importing: `VALHEIM_SAVE_DIR=/absolute/path bash ~/install_valheim_world.sh World.zip`.
 
 # Installing a world from a .zip file
 
-The repository includes `install_valheim_world.sh` for importing one world archive without manually moving save files. The importer validates the archive, rejects path traversal and symlinks, creates a full `valheim_server backup`, updates `WORLD_NAME`, and preserves the server’s running state.
+The repository includes `install_valheim_world.sh` for importing one world archive without manually moving save files. The importer validates the archive, rejects path traversal and symlinks, creates the configured `SAVE_DIR/worlds_local` directory when needed, creates a full `valheim_server backup`, updates `WORLD_NAME`, and preserves the server’s running state.
 
 Download it once on the server:
 
