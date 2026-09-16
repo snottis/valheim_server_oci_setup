@@ -892,15 +892,19 @@ function main {
     install_valheim_dedicated_server
 
     # Initialize the Server Credentials file
-    if [[ ! -s "${SERVER_HOME}/server_credentials" ]]; then
-        info "Generating server_credentials file"
+    local credentials_file="${SERVER_HOME}/server_credentials"
+    if [[ ! -s "${credentials_file}" ]]; then
+        info "Generating server_credentials file at ${credentials_file}"
         # Avoid a tr/fold/head pipeline here.  With pipefail enabled, head can
         # close the pipe early and make tr exit with SIGPIPE before the file is
         # written.
-        PASSWORD="$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32)))')"
+        if ! PASSWORD="$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32)))')"; then
+            error "Could not generate a password with python3."
+            return 1
+        fi
         CROSSPLAY_DEFAULT=0
         [[ $CROSSPLAY_SUPPORT == true ]] && CROSSPLAY_DEFAULT=1
-        cat <<-EOF >"${SERVER_HOME}/server_credentials"
+        if ! cat <<-EOF >"${credentials_file}"
 			SERVER_NAME="My server"
 			WORLD_NAME="My World"
 
@@ -921,14 +925,23 @@ function main {
 			# Crossplay backend (1=yes, 0=no)
 			CROSSPLAY=${CROSSPLAY_DEFAULT}
 		EOF
+        then
+            error "Could not write ${credentials_file}."
+            return 1
+        fi
+        chmod 600 "${credentials_file}"
+        if [[ ! -s "${credentials_file}" ]]; then
+            error "The credentials file is empty after writing: ${credentials_file}"
+            return 1
+        fi
         success "Generating server_credentials file - Done"
     fi
 
     # Keep older credentials files compatible with the new generated launcher.
-    if ! grep -q '^CROSSPLAY=' "${SERVER_HOME}/server_credentials"; then
+    if ! grep -q '^CROSSPLAY=' "${credentials_file}"; then
         CROSSPLAY_DEFAULT=0
         [[ $CROSSPLAY_SUPPORT == true ]] && CROSSPLAY_DEFAULT=1
-        echo "CROSSPLAY=${CROSSPLAY_DEFAULT}" >>"${SERVER_HOME}/server_credentials"
+        echo "CROSSPLAY=${CROSSPLAY_DEFAULT}" >>"${credentials_file}"
     fi
 
     # The FEX RootFS contains the x86_64 library needed by crossplay; this
